@@ -1,0 +1,118 @@
+# Answer for the Machine Learning Assignment.
+
+This purpose of this report is produce a prediction model with high accuracy.
+
+Proir uploading the data, let's upload the required library for the codes that we may use in this report.
+
+```{r}
+## Library loading & packages ####
+library(rpart) ; library(randomForest) ; library(caret)
+```
+
+Then downloading the training and testing data from the provided url
+
+```{r}
+
+trainurl<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testurl<-"http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(trainurl,des="training.csv",mode="wb")
+download.file(testurl,des="testing.csv",mode="wb")
+```
+
+Reading the data into memory, and split the data into training and testing dataset which will be used for cross validation.
+
+```{r}
+training<-read.csv("training.csv",header=TRUE)
+testing<-read.csv("testing.csv",header=TRUE)
+inTrain<-createDataPartition(y=training$classe,p=.6,list=FALSE)
+training.1<-training[inTrain,]
+testing.1<-training[-inTrain,]
+```
+
+Before applying any prediction algorithm, we should process the dataset and ensuring the relevant features / variables.
+1- Removing the 1st column "X"
+```{r}
+# Remove the 1st column
+training.1<-training.1[,-1]
+```
+
+2- Removing the features with non zero variance 
+
+```{r}
+# Remove near zero Var
+training.nzv<-nearZeroVar(training.1,saveMetrics=TRUE)$nzv
+training.2<-training.1[!training.nzv]
+```
+
+3- Removing the features that have too many missing data. 
+
+```{r}
+
+# Remove the the features that has too many missing data NA. i.e more 90% are missing
+
+getFractionMissing <- function(df = rawActitivity) {
+  colCount <- ncol(df)
+  returnDf <- data.frame(index=1:ncol(df),
+                         columnName=rep("undefined", colCount),
+                         FractionMissing=rep(-1, colCount),
+                         stringsAsFactors=FALSE)
+  for(i in 1:colCount) {
+    colVector <- df[,i]
+    missingCount <- length(which(colVector == "") * 1)
+    missingCount <- missingCount + sum(is.na(colVector) * 1)
+    returnDf$columnName[i] <- as.character(names(df)[i])
+    returnDf$FractionMissing[i] <- missingCount / length(colVector)
+  }
+  
+  return(returnDf)
+}
+
+
+list.Fraction.Missing<-getFractionMissing(training.2)
+training.col.names.wo.missing<-list.Fraction.Missing[list.Fraction.Missing$FractionMissing<.95,]$columnName
+training.3<-training.2[training.col.names.wo.missing]
+```
+
+
+Refelect the above changes in the training dataset on both testing dataset i.e the one which will be used for cross validation and the 2nd which will be used for the final validation.
+
+```{r}
+# Apply all preprocessing on the testing datasets
+col.names.all<-colnames(training.3)
+col.names.wo.classe<-colnames(training.3[,-58])
+testing.1<-testing.1[col.names.all]
+testing<-testing[col.names.wo.classe]
+
+# binding one row from training into testing dataset the removing it again from the testing dataset in order to ensure the testing dataset has exactly the same class of all features in the training dataset as well as all factor variables has the same no. of lvels between testing and training dataset. This
+testing <- rbind(training.3[1, -58] , testing) #note row 2 does not mean anything, this will be removed right.. now:
+testing <- testing[-1,]
+```
+
+Now, it is time to apply the prediction algorithms. We will start with Decision Tree.
+
+```{r}
+#  Apply Decision tree algorithm
+
+model.fit.1<-rpart(classe ~ ., data=training.3, method="class")
+pred.mod.fit.1.1<-predict(model.fit.1, testing.1 , type = "class")
+confusionMatrix(pred.mod.fit.1.1, testing.1$classe)
+# fancyRpartPlot(model.fit.1)
+```
+
+The accuracy from the decision tree algorithm is `r confusionMatrix(pred.mod.fit.1.1, testing.1$classe)$overall[1]`
+
+So, let's try Random Forest algorithm.
+
+```{r}
+# Apply Random Forest algorithm
+
+model.fit.2 <- randomForest(classe ~. , data=training.3)
+pred.mod.fit.2.1<- predict(model.fit.2, testing.1, type = "class")
+confusionMatrix(pred.mod.fit.2.1, testing.1$classe)
+```
+
+The accuracy from the Random Forest algorithm is `r confusionMatrix(pred.mod.fit.2.1, testing.1$classe)$overall[1]`
+So, we should expect a similar out of sample error when we test this prediction into the provided test dataset.
+
+
